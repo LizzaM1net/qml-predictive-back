@@ -83,6 +83,46 @@ jobs:
           echo "QT_HOST=$QT_HOST"         >> $GITHUB_ENV
           echo "QT_QTCMAKE=$QT_ANDROID/bin/qt-cmake" >> $GITHUB_ENV
 
+      # ── Signing keystore ──────────────────────────────────────────────────
+      # Production: add these four secrets in Settings → Secrets → Actions:
+      #   RELEASE_KEYSTORE_BASE64   base64 -w0 your-release.keystore
+      #   RELEASE_KEY_ALIAS         the key alias inside the store
+      #   RELEASE_STORE_PASSWORD    keystore password
+      #   RELEASE_KEY_PASSWORD      key password
+      #
+      # Without secrets a throwaway RSA key is generated so the APK is still
+      # fully signed and installable (just not production-trusted).
+      - name: Prepare signing keystore
+        env:
+          KEYSTORE_B64:  ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEY_ALIAS:     ${{ secrets.RELEASE_KEY_ALIAS }}
+          STORE_PASS:    ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_PASS:      ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "Using repository release keystore"
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "SIGN_KEYSTORE=$RUNNER_TEMP/release.keystore" >> $GITHUB_ENV
+            echo "SIGN_ALIAS=$KEY_ALIAS"     >> $GITHUB_ENV
+            echo "SIGN_STORE_PASS=$STORE_PASS" >> $GITHUB_ENV
+            echo "SIGN_KEY_PASS=$KEY_PASS"   >> $GITHUB_ENV
+          else
+            echo "No release keystore configured — generating a throwaway CI key"
+            keytool -genkeypair -v \
+              -keystore "$RUNNER_TEMP/ci.keystore" \
+              -alias     cikey \
+              -keyalg    RSA   \
+              -keysize   2048  \
+              -validity  1     \
+              -storepass android \
+              -keypass   android \
+              -dname     "CN=CI Build, O=CI, C=US"
+            echo "SIGN_KEYSTORE=$RUNNER_TEMP/ci.keystore" >> $GITHUB_ENV
+            echo "SIGN_ALIAS=cikey"          >> $GITHUB_ENV
+            echo "SIGN_STORE_PASS=android"   >> $GITHUB_ENV
+            echo "SIGN_KEY_PASS=android"     >> $GITHUB_ENV
+          fi
+
       # ── Configure ─────────────────────────────────────────────────────────
       - name: Configure CMake
         run: |
@@ -94,19 +134,24 @@ jobs:
             -DANDROID_PLATFORM=android-33 \
             -DQT_ANDROID_TARGET_SDK_VERSION=34 \
             -DQT_HOST_PATH="$QT_HOST" \
-            -DANDROID_NDK="$ANDROID_NDK_ROOT"
+            -DANDROID_NDK="$ANDROID_NDK_ROOT" \
+            -DQT_ANDROID_SIGN_APK=ON \
+            "-DQT_ANDROID_KEYSTORE_PATH=$SIGN_KEYSTORE" \
+            "-DQT_ANDROID_KEYSTORE_ALIAS=$SIGN_ALIAS" \
+            "-DQT_ANDROID_KEYSTORE_STORE_PASS=$SIGN_STORE_PASS" \
+            "-DQT_ANDROID_KEYSTORE_KEY_PASS=$SIGN_KEY_PASS"
 
       # ── Build ─────────────────────────────────────────────────────────────
       - name: Build
         run: cmake --build build --parallel "$(nproc)"
 
-      # ── Locate & upload APK ───────────────────────────────────────────────
+      # ── Locate & upload signed APK ────────────────────────────────────────
       - name: Locate APK
         run: find build -name "*.apk" | tee apk-paths.txt
 
-      - name: Upload APK artifact
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: predictive-back-debug-apk
+          name: predictive-back-release-signed-apk
           path: build/**/*.apk
           if-no-files-found: warn
