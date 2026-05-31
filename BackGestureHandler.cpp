@@ -9,10 +9,13 @@
 // JNI callbacks — called on the Android UI thread, so we queue to Qt thread
 // ---------------------------------------------------------------------------
 
-static void jniOnBackStarted(JNIEnv *, jclass, jint edge)
+static void jniOnBackStarted(JNIEnv *, jclass, jint edge, jfloat x, jfloat y)
 {
-    QMetaObject::invokeMethod(BackGestureHandler::instance(), [edge]() {
-        BackGestureHandler::instance()->handleBackStarted(static_cast<int>(edge));
+    QMetaObject::invokeMethod(BackGestureHandler::instance(), [edge, x, y]() {
+        BackGestureHandler::instance()->handleBackStarted(
+            static_cast<int>(edge),
+            static_cast<float>(x),
+            static_cast<float>(y));
     }, Qt::QueuedConnection);
 }
 
@@ -41,7 +44,7 @@ static void jniOnBackCancelled(JNIEnv *, jclass)
 }
 
 static const JNINativeMethod kMethods[] = {
-    {"onBackStartedNative",    "(I)V",    reinterpret_cast<void *>(jniOnBackStarted)},
+    {"onBackStartedNative",    "(IFF)V",  reinterpret_cast<void *>(jniOnBackStarted)},
     {"onBackProgressedNative", "(FFFI)V", reinterpret_cast<void *>(jniOnBackProgressed)},
     {"onBackCommittedNative",  "()V",     reinterpret_cast<void *>(jniOnBackCommitted)},
     {"onBackCancelledNative",  "()V",     reinterpret_cast<void *>(jniOnBackCancelled)},
@@ -93,9 +96,9 @@ void BackGestureHandler::setExitOnBack(bool exit)
     emit exitOnBackChanged();
 }
 
-void BackGestureHandler::handleBackStarted(int edge)
+void BackGestureHandler::handleBackStarted(int edge, float x, float y)
 {
-    emit backStarted(edge);
+    emit backStarted(edge, static_cast<qreal>(x), static_cast<qreal>(y));
 }
 
 void BackGestureHandler::handleBackProgressed(float progress, float x, float y, int edge)

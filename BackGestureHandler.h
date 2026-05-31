@@ -12,14 +12,13 @@ public:
     bool exitOnBack() const;
     void setExitOnBack(bool exit);
 
-    // Called via JNI from Java (queued to Qt thread)
-    void handleBackStarted(int edge);
+    void handleBackStarted(int edge, float startX, float startY);
     void handleBackProgressed(float progress, float x, float y, int edge);
     void handleBackCommitted();
     void handleBackCancelled();
 
 signals:
-    void backStarted(int edge);
+    void backStarted(int edge, qreal startX, qreal startY);
     void backProgressed(qreal progress, qreal x, qreal y, int edge);
     void backCommitted();
     void backCancelled();

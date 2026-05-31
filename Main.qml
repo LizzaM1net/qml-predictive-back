@@ -19,15 +19,21 @@ ApplicationWindow {
     property real gestureProgress: 0.0
     property real gestureTouchX:   0.0
     property real gestureTouchY:   0.0
+    property real gestureStartX:   0.0  // where the finger first touched the edge
+    property real gestureStartY:   0.0
     property bool gestureActive:   false
 
     Connections {
         target: BackGestureHandler
 
-        function onBackStarted(edge) {
+        function onBackStarted(edge, startX, startY) {
             root.gestureEdge     = edge
             root.gestureProgress = 0
             root.gestureActive   = true
+            root.gestureStartX   = startX
+            root.gestureStartY   = startY
+            root.gestureTouchX   = startX
+            root.gestureTouchY   = startY
         }
 
         function onBackProgressed(progress, x, y, edge) {
@@ -84,7 +90,10 @@ ApplicationWindow {
         visible:  gestureActive && gestureEdge === 0
         edge:     0
         progress: gestureProgress
+        touchX:   gestureTouchX
         touchY:   gestureTouchY
+        startX:   gestureStartX
+        startY:   gestureStartY
         z:        10
     }
 
@@ -92,7 +101,10 @@ ApplicationWindow {
         visible:  gestureActive && gestureEdge === 1
         edge:     1
         progress: gestureProgress
+        touchX:   gestureTouchX
         touchY:   gestureTouchY
+        startX:   gestureStartX
+        startY:   gestureStartY
         z:        10
     }
 

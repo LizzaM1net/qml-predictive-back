@@ -9,6 +9,14 @@ on:
     branches:
       - main
 
+# Cancel any in-progress run for the same source branch.
+# github.head_ref is the PR source branch; github.ref_name is the pushed branch.
+# Both evaluate to the same name for the same branch, so push + PR events share
+# a group and the older run is cancelled when a newer one starts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   build-android:
     name: Build APK (arm64-v8a)
