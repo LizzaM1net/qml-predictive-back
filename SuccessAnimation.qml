@@ -33,6 +33,7 @@ Item {
 
     // Second, slightly delayed ring for depth
     Rectangle {
+        id:          ring2Rect
         anchors.centerIn: parent
         width:   0
         height:  width
@@ -41,12 +42,15 @@ Item {
         border.color: "#03dac6"
         border.width: 2
         opacity: 1.0
+    }
 
+    // NumberAnimation has no delay property — use SequentialAnimation + PauseAnimation
+    SequentialAnimation {
+        id: ring2Anim
+        PauseAnimation { duration: 80 }
         ParallelAnimation {
-            id: ring2Anim
-            running: false
-            NumberAnimation { target: parent; property: "width";   from: 0; to: 220; duration: 600; delay: 80; easing.type: Easing.OutQuart }
-            NumberAnimation { target: parent; property: "opacity"; from: 0.85; to: 0; duration: 600; delay: 80; easing.type: Easing.InCubic }
+            NumberAnimation { target: ring2Rect; property: "width";   from: 0; to: 220; duration: 600; easing.type: Easing.OutQuart }
+            NumberAnimation { target: ring2Rect; property: "opacity"; from: 0.85; to: 0; duration: 600; easing.type: Easing.InCubic }
         }
     }
 
