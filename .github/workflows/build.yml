@@ -102,10 +102,10 @@ jobs:
           if [ -n "$KEYSTORE_B64" ]; then
             echo "Using repository release keystore"
             echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-            echo "SIGN_KEYSTORE=$RUNNER_TEMP/release.keystore" >> $GITHUB_ENV
-            echo "SIGN_ALIAS=$KEY_ALIAS"     >> $GITHUB_ENV
-            echo "SIGN_STORE_PASS=$STORE_PASS" >> $GITHUB_ENV
-            echo "SIGN_KEY_PASS=$KEY_PASS"   >> $GITHUB_ENV
+            echo "KS_PATH=$RUNNER_TEMP/release.keystore" >> $GITHUB_ENV
+            echo "KS_ALIAS=$KEY_ALIAS"     >> $GITHUB_ENV
+            echo "KS_STORE_PASS=$STORE_PASS" >> $GITHUB_ENV
+            echo "KS_KEY_PASS=$KEY_PASS"   >> $GITHUB_ENV
           else
             echo "No release keystore configured — generating a throwaway CI key"
             keytool -genkeypair -v \
@@ -117,13 +117,17 @@ jobs:
               -storepass android \
               -keypass   android \
               -dname     "CN=CI Build, O=CI, C=US"
-            echo "SIGN_KEYSTORE=$RUNNER_TEMP/ci.keystore" >> $GITHUB_ENV
-            echo "SIGN_ALIAS=cikey"          >> $GITHUB_ENV
-            echo "SIGN_STORE_PASS=android"   >> $GITHUB_ENV
-            echo "SIGN_KEY_PASS=android"     >> $GITHUB_ENV
+            echo "KS_PATH=$RUNNER_TEMP/ci.keystore" >> $GITHUB_ENV
+            echo "KS_ALIAS=cikey"          >> $GITHUB_ENV
+            echo "KS_STORE_PASS=android"   >> $GITHUB_ENV
+            echo "KS_KEY_PASS=android"     >> $GITHUB_ENV
           fi
 
       # ── Configure ─────────────────────────────────────────────────────────
+      # QT_ANDROID_SIGN_APK=ON tells Qt to pass --release --sign to
+      # androiddeployqt (producing a Gradle release buildType APK).
+      # The keystore details are NOT baked into cmake — androiddeployqt reads
+      # them at build time from the QT_ANDROID_KEYSTORE_* env vars below.
       - name: Configure CMake
         run: |
           "$QT_QTCMAKE" \
@@ -135,14 +139,19 @@ jobs:
             -DQT_ANDROID_TARGET_SDK_VERSION=34 \
             -DQT_HOST_PATH="$QT_HOST" \
             -DANDROID_NDK="$ANDROID_NDK_ROOT" \
-            -DQT_ANDROID_SIGN_APK=ON \
-            "-DQT_ANDROID_KEYSTORE_PATH=$SIGN_KEYSTORE" \
-            "-DQT_ANDROID_KEYSTORE_ALIAS=$SIGN_ALIAS" \
-            "-DQT_ANDROID_KEYSTORE_STORE_PASS=$SIGN_STORE_PASS" \
-            "-DQT_ANDROID_KEYSTORE_KEY_PASS=$SIGN_KEY_PASS"
+            -DQT_ANDROID_SIGN_APK=ON
 
-      # ── Build ─────────────────────────────────────────────────────────────
+      # ── Build + sign ───────────────────────────────────────────────────────
+      # androiddeployqt is invoked by cmake. When it sees --sign without
+      # inline path/alias it reads QT_ANDROID_KEYSTORE_PATH / _ALIAS from the
+      # environment; passwords always come from QT_ANDROID_KEYSTORE_STORE_PASS
+      # / _KEY_PASS. Mapping our KS_* vars to the exact names the tool expects.
       - name: Build
+        env:
+          QT_ANDROID_KEYSTORE_PATH:       ${{ env.KS_PATH }}
+          QT_ANDROID_KEYSTORE_ALIAS:      ${{ env.KS_ALIAS }}
+          QT_ANDROID_KEYSTORE_STORE_PASS: ${{ env.KS_STORE_PASS }}
+          QT_ANDROID_KEYSTORE_KEY_PASS:   ${{ env.KS_KEY_PASS }}
         run: cmake --build build --parallel "$(nproc)"
 
       # ── Locate & upload signed APK ────────────────────────────────────────
