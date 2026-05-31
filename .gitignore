@@ -1,0 +1,6 @@
+build/
+.cmake/
+CMakeUserPresets.json
+*.user
+*.autosave
+.qmake.stash
