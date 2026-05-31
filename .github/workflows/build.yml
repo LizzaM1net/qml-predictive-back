@@ -25,15 +25,17 @@ jobs:
         with:
           java-version: "17"
           distribution: temurin
-          cache: gradle
 
       # ── Android SDK + NDK ─────────────────────────────────────────────────
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
+      # The runner ships with the Android SDK at $ANDROID_SDK_ROOT; we just
+      # need to accept licences and pull in the NDK + target platform.
+      # We do NOT use android-actions/setup-android because it requires Gradle
+      # wrapper files to auto-detect packages (not present in a Qt/CMake project).
       - name: Install Android NDK and platform
         run: |
-          sdkmanager --install \
+          # Accept all SDK licences non-interactively
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
             "ndk;26.3.11579264" \
             "platforms;android-34" \
             "build-tools;34.0.0"
