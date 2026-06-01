@@ -92,13 +92,16 @@ public class MainActivity extends QtActivity {
             OnBackAnimationCallback anim = new OnBackAnimationCallback() {
                 @Override
                 public void onBackStarted(BackEvent e) {
-                    onBackStartedNative(e.getSwipeEdge(), e.getTouchX(), e.getTouchY());
+                    // BackEvent gives physical pixels; QML uses dp → divide by density
+                    float d = getResources().getDisplayMetrics().density;
+                    onBackStartedNative(e.getSwipeEdge(), e.getTouchX() / d, e.getTouchY() / d);
                 }
 
                 @Override
                 public void onBackProgressed(BackEvent e) {
+                    float d = getResources().getDisplayMetrics().density;
                     onBackProgressedNative(
-                            e.getProgress(), e.getTouchX(), e.getTouchY(), e.getSwipeEdge());
+                            e.getProgress(), e.getTouchX() / d, e.getTouchY() / d, e.getSwipeEdge());
                 }
 
                 @Override

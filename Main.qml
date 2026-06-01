@@ -108,14 +108,6 @@ ApplicationWindow {
         z:        10
     }
 
-    // Fetch safe-area insets once the window is laid out, and again on rotation.
-    Timer {
-        interval: 300
-        running:  true
-        repeat:   false
-        onTriggered: BackGestureHandler.refreshSafeArea()
-    }
-
     // -----------------------------------------------------------------------
     // Main content
     // -----------------------------------------------------------------------
@@ -123,12 +115,11 @@ ApplicationWindow {
         anchors {
             horizontalCenter: parent.horizontalCenter
             top:              parent.top
-            topMargin:        BackGestureHandler.safeTop + 24
-            bottom:           parent.bottom
+            // root.safeAreaMargins is populated by Qt 6.7+ from Android window insets
+            topMargin:        root.safeAreaMargins.top + 24
         }
-        bottomPadding: BackGestureHandler.safeBottom + 16
-        width:         parent.width * 0.84
-        spacing:       0
+        width:   parent.width * 0.84
+        spacing: 0
 
         // Title
         Text {
@@ -342,6 +333,9 @@ ApplicationWindow {
             lineHeight:     1.5
             color:          "#5a4070"
         }
+
+        // Bottom safe area spacer — keeps content above the nav pill
+        Item { width: 1; height: root.safeAreaMargins.bottom + 16 }
     }
 
     // -----------------------------------------------------------------------
