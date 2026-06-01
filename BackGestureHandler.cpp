@@ -122,3 +122,23 @@ void BackGestureHandler::handleBackCancelled()
 {
     emit backCancelled();
 }
+
+void BackGestureHandler::refreshSafeArea()
+{
+#ifdef Q_OS_ANDROID
+    QJniEnvironment env;
+    QJniObject result = QJniObject::callStaticObjectMethod(
+        "org/example/predictiveback/MainActivity",
+        "getWindowInsets",
+        "()[I");
+    if (!result.isValid()) return;
+    jintArray arr = result.object<jintArray>();
+    jint data[4] = {0, 0, 0, 0};
+    env->GetIntArrayRegion(arr, 0, 4, data);
+    m_safeTop    = static_cast<int>(data[0]);
+    m_safeBottom = static_cast<int>(data[1]);
+    m_safeLeft   = static_cast<int>(data[2]);
+    m_safeRight  = static_cast<int>(data[3]);
+    emit safeAreaChanged();
+#endif
+}

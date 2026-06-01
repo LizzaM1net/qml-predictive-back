@@ -1,7 +1,10 @@
 package org.example.predictiveback;
 
+import android.graphics.Insets;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.window.BackEvent;
 import android.window.OnBackAnimationCallback;
 import android.window.OnBackInvokedCallback;
@@ -19,6 +22,22 @@ public class MainActivity extends QtActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         instance = this;
+
+        // Edge-to-edge: extend the Qt surface behind the status bar and
+        // navigation bar. This aligns BackEvent touch coordinates (which are
+        // relative to the full display) with QML's coordinate system.
+        // Content is padded via safe-area insets exposed through getWindowInsets().
+        getWindow().setDecorFitsSystemWindows(false);
+
+        // Use light (white) icons on the system bars — we have a dark background.
+        WindowInsetsController ctrl = getWindow().getInsetsController();
+        if (ctrl != null) {
+            ctrl.setSystemBarsAppearance(
+                    0,
+                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                            | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+        }
+
         registerBackCallback();
     }
 
@@ -27,6 +46,26 @@ public class MainActivity extends QtActivity {
         if (instance == null) return;
         instance.exitOnBack = exit;
         instance.runOnUiThread(instance::registerBackCallback);
+    }
+
+    /**
+     * Returns system-bar + display-cutout insets as [top, bottom, left, right] in dp.
+     * Called from C++ (BackGestureHandler::refreshSafeArea) after the window is laid out.
+     */
+    public static int[] getWindowInsets() {
+        if (instance == null) return new int[]{0, 0, 0, 0};
+        android.view.View root = instance.getWindow().getDecorView();
+        WindowInsets wi = root.getRootWindowInsets();
+        if (wi == null) return new int[]{0, 0, 0, 0};
+        float density = instance.getResources().getDisplayMetrics().density;
+        Insets bars = wi.getInsets(
+                WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+        return new int[]{
+                Math.round(bars.top    / density),
+                Math.round(bars.bottom / density),
+                Math.round(bars.left   / density),
+                Math.round(bars.right  / density),
+        };
     }
 
     private void registerBackCallback() {

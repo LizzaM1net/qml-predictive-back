@@ -108,6 +108,14 @@ ApplicationWindow {
         z:        10
     }
 
+    // Fetch safe-area insets once the window is laid out, and again on rotation.
+    Timer {
+        interval: 300
+        running:  true
+        repeat:   false
+        onTriggered: BackGestureHandler.refreshSafeArea()
+    }
+
     // -----------------------------------------------------------------------
     // Main content
     // -----------------------------------------------------------------------
@@ -115,10 +123,12 @@ ApplicationWindow {
         anchors {
             horizontalCenter: parent.horizontalCenter
             top:              parent.top
-            topMargin:        56
+            topMargin:        BackGestureHandler.safeTop + 24
+            bottom:           parent.bottom
         }
-        width:   parent.width * 0.84
-        spacing: 0
+        bottomPadding: BackGestureHandler.safeBottom + 16
+        width:         parent.width * 0.84
+        spacing:       0
 
         // Title
         Text {
