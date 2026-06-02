@@ -1,4 +1,6 @@
 import QtQuick
+import QtQuick.Shapes
+import QtQuick.Particles
 
 Item {
     id: root
@@ -7,134 +9,139 @@ Item {
 
     function play() {
         visible = true
-        ringAnim.restart()
-        checkAnim.restart()
-        particleCanvas.launch()
+        ps.reset()
+        ps.running = true
+        burstEmitter.burst(32)
+        ring1Anim.restart()
+        ring2Anim.restart()
+        checkSequence.restart()
     }
 
-    // Expanding ring burst
+    // ── Ring 1 — fast expanding purple burst ─────────────────────────────────
     Rectangle {
-        id: ring
+        id:     ring1
         anchors.centerIn: parent
-        width:   0
-        height:  width
-        radius:  width * 0.5
-        color:   "transparent"
+        width:  0;  height: width;  radius: width * 0.5
+        color:  "transparent"
         border.color: "#bb86fc"
         border.width: 3
-        opacity: 1.0
+        opacity: 1
 
         ParallelAnimation {
-            id: ringAnim
-            NumberAnimation { target: ring; property: "width";   from: 0; to: 340; duration: 520; easing.type: Easing.OutQuart }
-            NumberAnimation { target: ring; property: "opacity"; from: 1; to: 0;   duration: 520; easing.type: Easing.InCubic }
+            id: ring1Anim
+            NumberAnimation { target: ring1; property: "width";   from: 0; to: 340; duration: 520; easing.type: Easing.OutQuart }
+            NumberAnimation { target: ring1; property: "opacity"; from: 1; to: 0;   duration: 520; easing.type: Easing.InCubic }
         }
     }
 
-    // Second, slightly delayed ring for depth
+    // ── Ring 2 — slightly slower teal ring for depth ──────────────────────────
     Rectangle {
-        id:          ring2Rect
+        id:     ring2
         anchors.centerIn: parent
-        width:   0
-        height:  width
-        radius:  width * 0.5
-        color:   "transparent"
+        width:  0;  height: width;  radius: width * 0.5
+        color:  "transparent"
         border.color: "#03dac6"
         border.width: 2
-        opacity: 1.0
-    }
-
-    // NumberAnimation has no delay property — use SequentialAnimation + PauseAnimation
-    SequentialAnimation {
-        id: ring2Anim
-        PauseAnimation { duration: 80 }
-        ParallelAnimation {
-            NumberAnimation { target: ring2Rect; property: "width";   from: 0; to: 220; duration: 600; easing.type: Easing.OutQuart }
-            NumberAnimation { target: ring2Rect; property: "opacity"; from: 0.85; to: 0; duration: 600; easing.type: Easing.InCubic }
-        }
-    }
-
-    // Checkmark
-    Text {
-        id: check
-        anchors.centerIn: parent
-        text:             "✓"
-        color:            "#bb86fc"
-        font.pixelSize:   checkSize
-        opacity:          0.0
-
-        property real checkSize: 0
+        opacity: 0
 
         SequentialAnimation {
-            id: checkAnim
-            NumberAnimation { target: check; property: "checkSize"; from: 0; to: 88; duration: 380; easing.type: Easing.OutBack }
-            NumberAnimation { target: check; property: "opacity";   from: 0; to: 1;  duration: 180 }
-            PauseAnimation  { duration: 700 }
-            NumberAnimation { target: check; property: "opacity";   from: 1; to: 0;  duration: 260 }
-            ScriptAction    { script: { root.visible = false } }
+            id: ring2Anim
+            PauseAnimation { duration: 80 }
+            ParallelAnimation {
+                NumberAnimation { target: ring2; property: "width";   from: 0;    to: 220; duration: 600; easing.type: Easing.OutQuart }
+                NumberAnimation { target: ring2; property: "opacity"; from: 0.85; to: 0;   duration: 600; easing.type: Easing.InCubic }
+            }
         }
     }
 
-    // Canvas-based particles
-    Canvas {
-        id: particleCanvas
-        anchors.fill: parent
+    // ── Checkmark — drawn on via strokeDashOffset animation ──────────────────
+    // Path: (5,30) → (27,55) → (75,5)
+    // Segment lengths: √(22²+25²) ≈ 33  +  √(48²+50²) ≈ 69  = 102 total
+    // Using pattern [105,105] so the gap covers the full path when offset=105,
+    // and the stroke covers it completely when offset=0.
+    Shape {
+        id:      checkShape
+        width:   80;  height: 60
+        anchors.centerIn: parent
+        opacity: 0
+        scale:   0.3
+        layer.enabled: true     // rasterise to texture for smooth scale animation
 
-        property var particles: []
+        ShapePath {
+            id:          checkPath
+            strokeColor: "#bb86fc"
+            strokeWidth: 6
+            fillColor:   "transparent"
+            capStyle:    ShapePath.RoundCap
+            joinStyle:   ShapePath.RoundJoin
 
-        function launch() {
-            ring2Anim.restart()
-            var cx = width  * 0.5
-            var cy = height * 0.5
-            particles = []
-            for (var i = 0; i < 28; i++) {
-                var angle = Math.random() * Math.PI * 2
-                var speed = 3.5 + Math.random() * 5.5
-                particles.push({
-                    x:    cx, y: cy,
-                    vx:   Math.cos(angle) * speed,
-                    vy:   Math.sin(angle) * speed,
-                    r:    3 + Math.random() * 5,
-                    hue:  Math.floor(250 + Math.random() * 80),
-                    life: 1.0,
-                    fade: 0.018 + Math.random() * 0.012
-                })
-            }
-            particleTimer.start()
+            strokeDashPattern: [105, 105]
+            strokeDashOffset:  105          // fully hidden at start
+
+            startX: 5;  startY: 30
+            PathLine { x: 27; y: 55 }
+            PathLine { x: 75; y: 5  }
         }
 
-        Timer {
-            id: particleTimer
-            interval: 16
-            repeat:   true
-            onTriggered: {
-                var alive = []
-                for (var i = 0; i < particleCanvas.particles.length; i++) {
-                    var p = particleCanvas.particles[i]
-                    p.x   += p.vx * 2.4
-                    p.y   += p.vy * 2.4
-                    p.vy  += 0.18   // gravity
-                    p.life -= p.fade
-                    if (p.life > 0) alive.push(p)
-                }
-                particleCanvas.particles = alive
-                if (alive.length === 0) particleTimer.stop()
-                particleCanvas.requestPaint()
+        SequentialAnimation {
+            id: checkSequence
+
+            // 1. Pop in with an overshoot spring
+            PauseAnimation { duration: 120 }
+            ParallelAnimation {
+                NumberAnimation { target: checkShape; property: "opacity"; from: 0;   to: 1.0; duration: 100 }
+                NumberAnimation { target: checkShape; property: "scale";   from: 0.3; to: 1.0; duration: 320; easing.type: Easing.OutBack }
             }
+
+            // 2. Draw the stroke left-to-right
+            NumberAnimation {
+                target: checkPath; property: "strokeDashOffset"
+                from: 105; to: 0; duration: 360; easing.type: Easing.OutCubic
+            }
+
+            // 3. Hold
+            PauseAnimation { duration: 620 }
+
+            // 4. Fade and shrink out
+            ParallelAnimation {
+                NumberAnimation { target: checkShape; property: "opacity"; from: 1; to: 0; duration: 260 }
+                NumberAnimation { target: checkShape; property: "scale"; from: 1.0; to: 0.7; duration: 260; easing.type: Easing.InCubic }
+            }
+
+            ScriptAction { script: { root.visible = false; ps.running = false } }
+        }
+    }
+
+    // ── Particle burst ────────────────────────────────────────────────────────
+    ParticleSystem {
+        id: ps
+        anchors.centerIn: parent
+        running: false
+
+        Emitter {
+            id:    burstEmitter
+            emitRate: 0
+            lifeSpan:          900
+            lifeSpanVariation: 300
+            size: 10;  sizeVariation: 6
+
+            velocity: AngleDirection {
+                angleVariation:     360
+                magnitude:          170
+                magnitudeVariation: 90
+            }
+            // Gravity pulls particles down so they arc naturally
+            acceleration: PointDirection { y: 240 }
         }
 
-        onPaint: {
-            var ctx = getContext("2d")
-            ctx.clearRect(0, 0, width, height)
-            var ps = particles
-            for (var i = 0; i < ps.length; i++) {
-                var p = ps[i]
-                ctx.beginPath()
-                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
-                ctx.fillStyle = "hsla(" + p.hue + ",85%,65%," + p.life + ")"
-                ctx.shadowBlur  = 8
-                ctx.shadowColor = "hsla(" + p.hue + ",90%,70%,0.6)"
-                ctx.fill()
+        // Each particle is a small coloured circle Item.
+        // Math.random() in the delegate is evaluated fresh per instance, giving
+        // varied sizes and hues across the burst without any manual loop.
+        ItemParticle {
+            delegate: Rectangle {
+                readonly property real sz: 7 + Math.random() * 9
+                width:  sz;  height: sz;  radius: sz * 0.5
+                color:  Qt.hsla((248 + Math.random() * 92) / 360, 0.90, 0.65, 1.0)
             }
         }
     }

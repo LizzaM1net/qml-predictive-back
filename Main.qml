@@ -8,6 +8,9 @@ ApplicationWindow {
     width:   360
     height:  780
     title:   "Predictive Back Demo"
+    // Extend the Qt surface behind status bar and nav bar so SafeArea.margins
+    // (Qt 6.9) reports the correct insets and the background fills edge-to-edge.
+    flags:   Qt.Window | Qt.ExpandedClientAreaHint
 
     Material.theme:  Material.Dark
     Material.accent: Material.Purple
@@ -115,8 +118,8 @@ ApplicationWindow {
         anchors {
             horizontalCenter: parent.horizontalCenter
             top:              parent.top
-            // root.safeAreaMargins is populated by Qt 6.7+ from Android window insets
-            topMargin:        root.safeAreaMargins.top + 24
+            // SafeArea attached type (Qt 6.9) gives status-bar + cutout height in dp
+            topMargin:        SafeArea.margins.top + 24
         }
         width:   parent.width * 0.84
         spacing: 0
@@ -335,7 +338,7 @@ ApplicationWindow {
         }
 
         // Bottom safe area spacer — keeps content above the nav pill
-        Item { width: 1; height: root.safeAreaMargins.bottom + 16 }
+        Item { width: 1; height: SafeArea.margins.bottom + 16 }
     }
 
     // -----------------------------------------------------------------------

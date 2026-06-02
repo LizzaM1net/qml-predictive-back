@@ -61,7 +61,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           aqtversion: "==3.1.*"
-          version: "6.7.3"
+          version: "6.9.1"
           host: linux
           target: desktop
           arch: linux_gcc_64
@@ -74,7 +74,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           aqtversion: "==3.1.*"
-          version: "6.7.3"
+          version: "6.9.1"
           host: linux
           target: android
           arch: android_arm64_v8a
@@ -85,8 +85,8 @@ jobs:
       # ── Paths ─────────────────────────────────────────────────────────────
       - name: Export Qt paths
         run: |
-          QT_ANDROID=${{ github.workspace }}/qt/Qt/6.7.3/android_arm64_v8a
-          QT_HOST=${{ github.workspace }}/qt/Qt/6.7.3/gcc_64
+          QT_ANDROID=${{ github.workspace }}/qt/Qt/6.9.1/android_arm64_v8a
+          QT_HOST=${{ github.workspace }}/qt/Qt/6.9.1/gcc_64
           echo "QT_ANDROID=$QT_ANDROID"   >> $GITHUB_ENV
           echo "QT_HOST=$QT_HOST"         >> $GITHUB_ENV
           echo "QT_QTCMAKE=$QT_ANDROID/bin/qt-cmake" >> $GITHUB_ENV
