@@ -1,23 +1,20 @@
 import QtQuick
-import QtQuick.Shapes
-import QtQuick.Particles
 
 Item {
     id: root
     anchors.fill: parent
-    visible:      false
+    visible: false
 
     function play() {
         visible = true
-        ps.reset()
-        ps.running = true
-        burstEmitter.burst(32)
         ring1Anim.restart()
         ring2Anim.restart()
+        for (var i = 0; i < particleRep.count; i++)
+            particleRep.itemAt(i).go()
         checkSequence.restart()
     }
 
-    // ── Ring 1 — fast expanding purple burst ─────────────────────────────────
+    // ── Ring 1 — fast purple burst ────────────────────────────────────────────
     Rectangle {
         id:     ring1
         anchors.centerIn: parent
@@ -25,7 +22,7 @@ Item {
         color:  "transparent"
         border.color: "#bb86fc"
         border.width: 3
-        opacity: 1
+        opacity: 1.0
 
         ParallelAnimation {
             id: ring1Anim
@@ -34,7 +31,7 @@ Item {
         }
     }
 
-    // ── Ring 2 — slightly slower teal ring for depth ──────────────────────────
+    // ── Ring 2 — slower teal ring for depth ───────────────────────────────────
     Rectangle {
         id:     ring2
         anchors.centerIn: parent
@@ -42,7 +39,7 @@ Item {
         color:  "transparent"
         border.color: "#03dac6"
         border.width: 2
-        opacity: 0
+        opacity: 0.0
 
         SequentialAnimation {
             id: ring2Anim
@@ -54,94 +51,113 @@ Item {
         }
     }
 
-    // ── Checkmark — drawn on via strokeDashOffset animation ──────────────────
-    // Path: (5,30) → (27,55) → (75,5)
-    // Segment lengths: √(22²+25²) ≈ 33  +  √(48²+50²) ≈ 69  = 102 total
-    // Using pattern [105,105] so the gap covers the full path when offset=105,
-    // and the stroke covers it completely when offset=0.
-    Shape {
-        id:      checkShape
-        width:   80;  height: 60
+    // ── Checkmark — two rotated Rectangles grown from their left pivot ─────────
+    // Layout (in checkGroup's 80×60 space):
+    //   short arm  pivot=(5,30)  rotation=49°  length=34
+    //   long  arm  pivot=(27,55) rotation=-46° length=70
+    // Arm grows from the pivot outward because transformOrigin=Item.Left keeps
+    // the left-center edge fixed while width expands to the right.
+    Item {
+        id: checkGroup
         anchors.centerIn: parent
-        opacity: 0
+        width: 80;  height: 60
+        opacity: 0.0
         scale:   0.3
-        layer.enabled: true     // rasterise to texture for smooth scale animation
 
-        ShapePath {
-            id:          checkPath
-            strokeColor: "#bb86fc"
-            strokeWidth: 6
-            fillColor:   "transparent"
-            capStyle:    ShapePath.RoundCap
-            joinStyle:   ShapePath.RoundJoin
+        Rectangle {
+            id: shortArm
+            x: 5;  y: 27.5          // left-center of rect sits at (5, 30) in parent
+            width: 0;  height: 5;  radius: 2.5
+            color: "#bb86fc"
+            transformOrigin: Item.Left
+            rotation: 49
+        }
 
-            strokeDashPattern: [105, 105]
-            strokeDashOffset:  105          // fully hidden at start
-
-            startX: 5;  startY: 30
-            PathLine { x: 27; y: 55 }
-            PathLine { x: 75; y: 5  }
+        Rectangle {
+            id: longArm
+            x: 27;  y: 52.5         // left-center of rect sits at (27, 55) in parent
+            width: 0;  height: 5;  radius: 2.5
+            color: "#bb86fc"
+            transformOrigin: Item.Left
+            rotation: -46
         }
 
         SequentialAnimation {
             id: checkSequence
 
-            // 1. Pop in with an overshoot spring
-            PauseAnimation { duration: 120 }
+            // Pop in with spring overshoot
+            PauseAnimation  { duration: 120 }
             ParallelAnimation {
-                NumberAnimation { target: checkShape; property: "opacity"; from: 0;   to: 1.0; duration: 100 }
-                NumberAnimation { target: checkShape; property: "scale";   from: 0.3; to: 1.0; duration: 320; easing.type: Easing.OutBack }
+                NumberAnimation { target: checkGroup; property: "opacity"; from: 0;   to: 1.0; duration: 100 }
+                NumberAnimation { target: checkGroup; property: "scale";   from: 0.3; to: 1.0; duration: 320; easing.type: Easing.OutBack }
             }
 
-            // 2. Draw the stroke left-to-right
-            NumberAnimation {
-                target: checkPath; property: "strokeDashOffset"
-                from: 105; to: 0; duration: 360; easing.type: Easing.OutCubic
-            }
+            // Draw short arm then long arm
+            NumberAnimation { target: shortArm; property: "width"; from: 0; to: 34; duration: 180; easing.type: Easing.OutCubic }
+            NumberAnimation { target: longArm;  property: "width"; from: 0; to: 70; duration: 300; easing.type: Easing.OutCubic }
 
-            // 3. Hold
+            // Hold
             PauseAnimation { duration: 620 }
 
-            // 4. Fade and shrink out
+            // Shrink and fade out
             ParallelAnimation {
-                NumberAnimation { target: checkShape; property: "opacity"; from: 1; to: 0; duration: 260 }
-                NumberAnimation { target: checkShape; property: "scale"; from: 1.0; to: 0.7; duration: 260; easing.type: Easing.InCubic }
+                NumberAnimation { target: checkGroup; property: "opacity"; from: 1.0; to: 0; duration: 260 }
+                NumberAnimation { target: checkGroup; property: "scale";   from: 1.0; to: 0.7; duration: 260; easing.type: Easing.InCubic }
             }
-
-            ScriptAction { script: { root.visible = false; ps.running = false } }
+            ScriptAction { script: root.visible = false }
         }
     }
 
-    // ── Particle burst ────────────────────────────────────────────────────────
-    ParticleSystem {
-        id: ps
-        anchors.centerIn: parent
-        running: false
+    // ── Particle burst — 24 coloured dots, pure QML NumberAnimation ───────────
+    // Dots fan out in evenly-spaced angles with slight speed variation.
+    // Each dot exposes go() so play() can restart all of them in one loop.
+    Repeater {
+        id: particleRep
+        model: 24
 
-        Emitter {
-            id:    burstEmitter
-            emitRate: 0
-            lifeSpan:          900
-            lifeSpanVariation: 300
-            size: 10;  sizeVariation: 6
+        Item {
+            id: dot
 
-            velocity: AngleDirection {
-                angleVariation:     360
-                magnitude:          170
-                magnitudeVariation: 90
+            readonly property real angle:   (index / 24.0) * Math.PI * 2
+            readonly property real dist:    90 + (index % 6) * 20
+            readonly property real dotSize: 7  + (index % 4) * 2.5
+
+            // Start centred; go() resets via explicit `from` before animating
+            x: root.width  / 2 - dotSize / 2
+            y: root.height / 2 - dotSize / 2
+            width: dotSize;  height: dotSize
+            opacity: 0
+
+            Rectangle {
+                anchors.fill: parent
+                radius: parent.width / 2
+                color:  Qt.hsla(((248 + index * 14) % 360) / 360, 0.90, 0.65, 1.0)
             }
-            // Gravity pulls particles down so they arc naturally
-            acceleration: PointDirection { y: 240 }
-        }
 
-        // Each particle is a small coloured circle Item.
-        // Math.random() in the delegate is evaluated fresh per instance, giving
-        // varied sizes and hues across the burst without any manual loop.
-        ItemParticle {
-            delegate: Rectangle {
-                readonly property real sz: 7 + Math.random() * 9
-                width:  sz;  height: sz;  radius: sz * 0.5
-                color:  Qt.hsla((248 + Math.random() * 92) / 360, 0.90, 0.65, 1.0)
+            function go() { dotAnim.restart() }
+
+            ParallelAnimation {
+                id: dotAnim
+
+                NumberAnimation {
+                    target: dot;  property: "x"
+                    from: root.width  / 2 - dot.dotSize / 2
+                    to:   root.width  / 2 + Math.cos(dot.angle) * dot.dist - dot.dotSize / 2
+                    duration: 680 + index * 12
+                    easing.type: Easing.OutQuad
+                }
+                NumberAnimation {
+                    target: dot;  property: "y"
+                    // Extra +50 shifts the arc downward like gravity
+                    from: root.height / 2 - dot.dotSize / 2
+                    to:   root.height / 2 + Math.sin(dot.angle) * dot.dist + 50 - dot.dotSize / 2
+                    duration: 680 + index * 12
+                    easing.type: Easing.OutCubic
+                }
+                SequentialAnimation {
+                    NumberAnimation { target: dot; property: "opacity"; to: 1;   duration: 70  }
+                    NumberAnimation { target: dot; property: "opacity"; to: 0;   duration: 610; easing.type: Easing.InQuad }
+                }
             }
         }
     }
