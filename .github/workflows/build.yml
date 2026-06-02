@@ -1,0 +1,174 @@
+name: Android Build
+
+on:
+  push:
+    branches:
+      - main
+      - "claude/**"
+  pull_request:
+    branches:
+      - main
+
+# Cancel any in-progress run for the same source branch.
+# github.head_ref is the PR source branch; github.ref_name is the pushed branch.
+# Both evaluate to the same name for the same branch, so push + PR events share
+# a group and the older run is cancelled when a newer one starts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    name: Build APK (arm64-v8a)
+    runs-on: ubuntu-24.04
+
+    steps:
+      # ── Source ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Java ──────────────────────────────────────────────────────────────
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      # ── Android SDK + NDK ─────────────────────────────────────────────────
+      # The runner ships with the Android SDK at $ANDROID_SDK_ROOT; we just
+      # need to accept licences and pull in the NDK + target platform.
+      # We do NOT use android-actions/setup-android because it requires Gradle
+      # wrapper files to auto-detect packages (not present in a Qt/CMake project).
+      - name: Install Android NDK and platform
+        run: |
+          # Accept all SDK licences non-interactively
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;26.3.11579264" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+          # The runner pre-installs several SDK platform directories
+          # (android-36-ext19 with a corrupt jar, android-37 preview, etc.).
+          # aapt2 and Android Lint scan every platforms/ subdirectory, so even
+          # with compileSdkVersion=34 they request or choke on those extras.
+          # Keep ONLY android-34 — the SDK we actually want to build against.
+          find "$ANDROID_SDK_ROOT/platforms" -maxdepth 1 -mindepth 1 \
+               ! -name "android-34" -exec rm -rf {} + 2>/dev/null || true
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/26.3.11579264" >> $GITHUB_ENV
+
+      # ── Qt (Linux host tools needed for cross-compilation) ────────────────
+      - name: Install Qt – Linux host
+        uses: jurplel/install-qt-action@v4
+        with:
+          aqtversion: "==3.1.*"
+          version: "6.9.1"
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          dir: "${{ github.workspace }}/qt"
+          set-env: false          # we'll set paths manually below
+          cache: true
+
+      # ── Qt (Android arm64-v8a target) ─────────────────────────────────────
+      - name: Install Qt – Android arm64
+        uses: jurplel/install-qt-action@v4
+        with:
+          aqtversion: "==3.1.*"
+          version: "6.9.1"
+          host: linux
+          target: android
+          arch: android_arm64_v8a
+          dir: "${{ github.workspace }}/qt"
+          set-env: true           # sets Qt6_DIR, QT_ROOT_DIR
+          cache: true
+
+      # ── Paths ─────────────────────────────────────────────────────────────
+      - name: Export Qt paths
+        run: |
+          QT_ANDROID=${{ github.workspace }}/qt/Qt/6.9.1/android_arm64_v8a
+          QT_HOST=${{ github.workspace }}/qt/Qt/6.9.1/gcc_64
+          echo "QT_ANDROID=$QT_ANDROID"   >> $GITHUB_ENV
+          echo "QT_HOST=$QT_HOST"         >> $GITHUB_ENV
+          echo "QT_QTCMAKE=$QT_ANDROID/bin/qt-cmake" >> $GITHUB_ENV
+
+      # ── Signing keystore ──────────────────────────────────────────────────
+      # Production: add these four secrets in Settings → Secrets → Actions:
+      #   RELEASE_KEYSTORE_BASE64   base64 -w0 your-release.keystore
+      #   RELEASE_KEY_ALIAS         the key alias inside the store
+      #   RELEASE_STORE_PASSWORD    keystore password
+      #   RELEASE_KEY_PASSWORD      key password
+      #
+      # Without secrets a throwaway RSA key is generated so the APK is still
+      # fully signed and installable (just not production-trusted).
+      - name: Prepare signing keystore
+        env:
+          KEYSTORE_B64:  ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEY_ALIAS:     ${{ secrets.RELEASE_KEY_ALIAS }}
+          STORE_PASS:    ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_PASS:      ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "Using repository release keystore"
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "KS_PATH=$RUNNER_TEMP/release.keystore" >> $GITHUB_ENV
+            echo "KS_ALIAS=$KEY_ALIAS"     >> $GITHUB_ENV
+            echo "KS_STORE_PASS=$STORE_PASS" >> $GITHUB_ENV
+            echo "KS_KEY_PASS=$KEY_PASS"   >> $GITHUB_ENV
+          else
+            echo "No release keystore configured — generating a throwaway CI key"
+            keytool -genkeypair -v \
+              -keystore "$RUNNER_TEMP/ci.keystore" \
+              -alias     cikey \
+              -keyalg    RSA   \
+              -keysize   2048  \
+              -validity  1     \
+              -storepass android \
+              -keypass   android \
+              -dname     "CN=CI Build, O=CI, C=US"
+            echo "KS_PATH=$RUNNER_TEMP/ci.keystore" >> $GITHUB_ENV
+            echo "KS_ALIAS=cikey"          >> $GITHUB_ENV
+            echo "KS_STORE_PASS=android"   >> $GITHUB_ENV
+            echo "KS_KEY_PASS=android"     >> $GITHUB_ENV
+          fi
+
+      # ── Configure ─────────────────────────────────────────────────────────
+      # QT_ANDROID_SIGN_APK=ON tells Qt to pass --release --sign to
+      # androiddeployqt (producing a Gradle release buildType APK).
+      # The keystore details are NOT baked into cmake — androiddeployqt reads
+      # them at build time from the QT_ANDROID_KEYSTORE_* env vars below.
+      - name: Configure CMake
+        run: |
+          "$QT_QTCMAKE" \
+            -S . \
+            -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-33 \
+            -DQT_ANDROID_TARGET_SDK_VERSION=34 \
+            -DQT_HOST_PATH="$QT_HOST" \
+            -DANDROID_NDK="$ANDROID_NDK_ROOT" \
+            -DQT_ANDROID_SIGN_APK=ON
+
+      # ── Build + sign ───────────────────────────────────────────────────────
+      # androiddeployqt is invoked by cmake. When it sees --sign without
+      # inline path/alias it reads QT_ANDROID_KEYSTORE_PATH / _ALIAS from the
+      # environment; passwords always come from QT_ANDROID_KEYSTORE_STORE_PASS
+      # / _KEY_PASS. Mapping our KS_* vars to the exact names the tool expects.
+      - name: Build
+        env:
+          QT_ANDROID_KEYSTORE_PATH:       ${{ env.KS_PATH }}
+          QT_ANDROID_KEYSTORE_ALIAS:      ${{ env.KS_ALIAS }}
+          QT_ANDROID_KEYSTORE_STORE_PASS: ${{ env.KS_STORE_PASS }}
+          QT_ANDROID_KEYSTORE_KEY_PASS:   ${{ env.KS_KEY_PASS }}
+        run: cmake --build build --parallel "$(nproc)"
+
+      # ── Locate & upload signed APK ────────────────────────────────────────
+      - name: Locate APK
+        run: find build -name "*.apk" | tee apk-paths.txt
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: predictive-back-release-signed-apk
+          path: build/**/*.apk
+          if-no-files-found: warn
